@@ -20,3 +20,6 @@ and, also to .bash_profile if you want the same behaviour on login and non-login
 
 ## Dependencies
 Each script has its own...
+
+## Usage
+Have a look at the [wiki](https://github.com/igmk/shortcuts/wiki)

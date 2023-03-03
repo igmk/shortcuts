@@ -19,7 +19,7 @@ It might be an idea also to add the repository folder to your path such that you
 and, also to .bash_profile if you want the same behaviour on login and non-login shells
 
 ## Dependencies
-Each script has its own...
+Each script has its own... see the [wiki](https://github.com/igmk/shortcuts/wiki)
 
 ## Usage
 Have a look at the [wiki](https://github.com/igmk/shortcuts/wiki)

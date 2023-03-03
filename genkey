@@ -1,0 +1,15 @@
+#! /bin/bash
+
+keyname=$1
+
+rm $HOME/.ssh/$keyname
+rm $HOME/.ssh/$keyname
+
+ssh-keygen -t ed25519 -f $keyname
+
+echo " "
+echo "This is your public key:"
+cat $keyname.pub
+
+mv $keyname $HOME/.ssh/
+mv $keyname.pub $HOME/.ssh/

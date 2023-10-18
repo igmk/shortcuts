@@ -1,0 +1,126 @@
+#! /bin/bash
+
+# Copyright (C) 2022 Davide Ori 
+# University of Cologne
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+
+#   This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+
+#    See <https://www.gnu.org/licenses/> for more details
+
+what=$1
+host=$2
+gate=$3  # not implemented
+
+if [ "$what" = "help" ]; then
+	echo "This script opens  a remote jupyter-notebook session on a PC at IGMK"
+	echo "It uses tmux for terminal multiplexing and sshpass for password handling on multiple sessions, you need to install these programs first"
+	echo "WARNING: while opening the session the password is stored in the environment variable SSHPASS which is unset after usage, in principle it is not visible, but it is still a security-issue"
+	echo "When opening a connection it uses xdg-open to make your browser pointing to the jupyter-lab URL, use xdg-settings to edit your browser preferenses"
+	echo "The script works on linux and it is tested on Ubuntu 20.04"
+	echo "The USAGE instructions assume that you made this script executable and you have it in your PATH"
+	echo -e "\n USAGE:"
+	echo -e "\n\t OPEN a connection:\n"
+	echo -e "\t jupyter-igmk open <host>"
+	echo -e "\t <host> must be a valid igmk PC name such as secaire, ecir, lodos and needs to have jupyter-notebook installed, consult the list of available PC and their exposure through a public IP address on https://wiki.uni-koeln.de/!meteo-wiki/doku.php?id=computers"
+	echo -e "\n\t by default it uses your username on your remote machine. If that differs from your username at igmk a workaround is to do:\n"
+	echo -e "\t jupyter-igmk open <user>@<host>\n\n"
+	echo -e "\t potentially you can have multiple sessions opened on multiple PCs, but do not go crazy"
+	echo -e "\n\t CLOSE the connection:\n"
+	echo -e "\t jupyter-igmk close <host>"
+	echo -e "\t if <host> is empty, the program will kill the tmux server and all the opened sessions, this would affect also other potentially opened tmux sessions on your machine. Specify <host> to get a more surgical management of your sessions "
+
+elif [ "$what" = "close" ]; then
+	if [ -z "$host" ]; then
+	       echo "Closing all tmux sessions"
+	       tmux kill-server
+	else
+	       echo "Closing ${host} sessions"
+	       tmux kill-session -t ${host}-nb
+	       tmux kill-session -t ${host}-tunnel
+	fi
+elif [ "$what" = "open" ]; then
+	logfile="${HOME}/.jupyter-igmk.log"
+	echo "log of the jupyter session is saved on $logfile"
+	rm -f $logfile  # remove the last logfile
+	hostname="${host}.meteo.uni-koeln.de"
+	echo "Opening a jupyter-session on ${hostname}"
+
+	echo "Type your password for $hostname"
+	read -s password
+
+	# Some treatment to make the sshpass a little more secure (avoid having the password written in a session or listed by ps)
+	export SSHPASS=$password
+
+	jpycmd="source ${HOME}/.bashrc; jupyter-notebook --no-browser"
+	sshcmd="sshpass -e ssh -X ${hostname} -t '${jpycmd}' | tee ${logfile}"
+
+	tmux new-session -d -s ${host}-nb;       # start new detached tmux session
+	tmux send -t ${host}-nb "${sshcmd}" C-m; # send ssh command to it and init jupy on the server side
+
+	while [ -z "$line" ]; do # it might take a while before connection is established and a value parsed
+		line=$(grep -hnrs "http://localhost:" $logfile | tail -1)
+	done
+	stringarray=($line)
+	URL=${stringarray[-1]}
+	port=$(echo $URL| cut -d':' -f 3| cut -d'/' -f 1)
+	tunnelcmd="sshpass -e ssh -X -N -L localhost:$port:localhost:$port $host.meteo.uni-koeln.de"
+
+	tmux new-session -d -s ${host}-tunnel;           # start another detached tmux session
+	tmux send -t ${host}-tunnel "${tunnelcmd}" C-m;  # send tunneling command to it
+
+	echo "connecting to "
+	echo $URL
+
+	unset SSHPASS # anyone with access to your terminal could just echo it if not unset
+	xdg-open $URL # for MACOS the command is "open" while for Windows is start... on Linux you can edit the preferred browser with xdg-settings
+elif [ "$what" = "hop" ]; then
+	logfile="${HOME}/.jupyter-igmk.log"
+	loggate="${HOME}/.jupyter-gateway.log"
+        echo "log of the jupyter session is saved on $logfile"
+	echo "log of the gateway is saved on $loggate"
+        rm -f $logfile  # remove the last logfile
+	rm -f $loggate # same for the gateway
+
+        hostname="${host}.meteo.uni-koeln.de"
+	gateway="${gate}"
+	echo "Opening a jupyter-session on ${hostname} hopping through ${gate}"
+
+        echo "Type your password for $hostname"
+        read -s password
+        # Some treatment to make the sshpass a little more secure (avoid having the password written in a session or listed by ps)
+        export SSHPASS=$password
+
+        jpycmd="source ${HOME}/.bashrc; jupyter-notebook --no-browser"
+        sshcmd="sshpass -e ssh -X ${hostname} -t '${jpycmd}' | tee ${logfile}"
+
+        tmux new-session -d -s ${host}-nb;       # start new detached tmux session
+        tmux send -t ${host}-nb "${sshcmd}" C-m; # send ssh command to it and init jupy on the server side
+
+        while [ -z "$line" ]; do # it might take a while before connection is established and a value parsed
+                line=$(grep -hnrs "http://localhost:" $logfile | tail -1)
+        done
+        stringarray=($line)
+        URL=${stringarray[-1]}
+        port=$(echo $URL| cut -d':' -f 3| cut -d'/' -f 1)
+        tunnelcmd="sshpass -e ssh -X -N -L localhost:$port:localhost:$port $host.meteo.uni-koeln.de"
+
+        tmux new-session -d -s ${host}-tunnel;           # start another detached tmux session
+        tmux send -t ${host}-tunnel "${tunnelcmd}" C-m;  # send tunneling command to it
+
+        echo "connecting to "
+	echo $URL
+
+        unset SSHPASS # anyone with access to your terminal could just echo it if not unset
+        xdg-open $URL
+else
+	echo "This is not a valid command. Correct syntax is:"
+	echo "jupyter-igmk [help/open/close] <host>"
+fi
